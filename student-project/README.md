@@ -1,56 +1,32 @@
 What I did, step by step
+Dockerfile
+Base Image: Used node:20-alpine because Alpine is a much smaller Linux distro, making the final image lighter and faster to build/pull.
 
-I Wrote a Dockerfile for the Node app and Used node:20-alpine as the base image because Alpine is a much smaller Linux distro, so the final image is lighter and faster to build/pull.
+Layer Caching: Copied package.json first and ran npm install before copying the rest of the code. Docker caches each step, so if I only change server.js later, it won't reinstall all dependencies again and just reuses the cached layer to save time.
 
-Copied package.json first and ran npm install before copying the rest of my code. I did it in this order on purpose — Docker caches each step, so if I only change server.js later, it won't have to reinstall all the dependencies again. It'll just reuse the cached npm install step, which saves a lot of time.
+Code & Ports: Copied the rest of the app code in, exposed port 3000 (matches PORT in .env), and set the start command to npm start (node server.js).
 
-Copied the rest of the app code in after that.
+Docker Compose (docker-compose.yml)
+app service: Builds from the Dockerfile, loads environment variables from .env, and maps port 3000 on my machine to port 3000 in the container.
 
-Exposed port 3000, since that's the port the app listens on (matches PORT in .env).
+mysql service: Uses the official mysql:8.0 image and loads its config from .env.
 
-Set the start command to npm start, which runs node server.js.
+Network (app-network): Both services are on the same custom network so app can reach mysql using the hostname mysql.
 
-Wrote docker-compose.yml with two services
-app: builds from my Dockerfile, loads its environment variables from .env, and maps port 3000 on my machine to port 3000 in the container.
-mysql: uses the official mysql:8.0 image, and also loads its config from .env.
+Database Init: Mounted db/init.sql into /docker-entrypoint-initdb.d/ inside the MySQL container so MySQL automatically runs it the first time it starts with an empty database to create the tasks table.
 
-Both services are on the same custom network I created called app-network. This matters because it's the only way app can reach mysql using the hostname mysql — without a shared network, that wouldn't work.
-I mounted db/init.sql into a special folder inside the MySQL container (/docker-entrypoint-initdb.d/). MySQL automatically runs any .sql file it finds there, but only the very first time it starts with an empty database — that's how the tasks table gets created without me doing it by hand.
+Data Persistence: Mounted a named volume (mysql-data) to /var/lib/mysql so data doesn't disappear when stopping and restarting containers.
 
-I also mounted a named volume (mysql-data) to MySQL's data folder (/var/lib/mysql), so my data doesn't disappear every time I stop and restart the containers.
-
-Set up the .env file
+Configuration (.env)
 Copied .env.example to .env.
 
-Made sure the app's DB credentials (DB_USER, DB_PASSWORD, DB_NAME) match what I gave MySQL (MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE). They have to match, otherwise MySQL won't let the app log in.
+Made sure the app's DB credentials (DB_USER, DB_PASSWORD, DB_NAME) match MySQL's (MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE).
 
-Cleaned up the compose file
-At first I had the MySQL credentials typed twice — once in .env and again directly in docker-compose.yml. I changed it so the mysql service also reads from .env and uses ${VARIABLE_NAME} syntax to pull the values in, instead of duplicating them. Now if I ever need to change a password, I only change it in one place.
-How I tested it
-bash
-docker compose up --build
+Updated docker-compose.yml to read values from .env using ${VARIABLE_NAME} syntax instead of hardcoding them twice, keeping everything in one place.
 
-Then in another terminal:
-
-bash
-curl http://localhost:3000/health
-curl -X POST http://localhost:3000/tasks -H "Content-Type: application/json" -d '{"title": "Finish Docker assignment"}'
-curl http://localhost:3000/tasks
-
-To check that data survives a restart:
-
-bash
-docker compose down
-docker compose up
-curl http://localhost:3000/tasks
-
-To check that the volume flag actually wipes data:
-
-bash
-docker compose down -v
-docker compose up
-curl http://localhost:3000/tasks
-Files I added
+Files Added
 Dockerfile
+
 docker-compose.yml
-.env (copied from .env.example, values kept as given)
+
+.env
